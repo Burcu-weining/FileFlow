@@ -1,0 +1,78 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FileFlow — File Converter</title>
+    <link rel="stylesheet" href="/web/style.css">
+    <script src="/web/script.js" defer></script>
+</head>
+<body>
+    <main class="container">
+        <h1>Convert files effortlessly.</h1>
+        <p class="subtitle">
+            Convert images in seconds. No complicated software needed.
+        </p>
+
+        <section class="drop-area" id="dropArea">
+            <div class="upload-icon">↑</div>
+            <h2>Drag & drop your file here</h2>
+            <p>or choose a file from your computer</p>
+
+            <button type="button" id="browseButton" class="browse-button">
+                Browse Files
+            </button>
+
+            <input
+                type="file"
+                id="fileInput"
+                accept=".jpg,.jpeg,.png,.webp,.pdf"
+                hidden
+            >
+
+            <p class="file-hint">JPG, PNG, WEBP, PDF · Max 10 MB</p>
+        </section>
+
+        <div id="selectedFile" class="selected-file" hidden>
+            <span id="fileName"></span>
+            <button type="button" id="removeButton" class="remove-button">
+                Remove File
+            </button>
+        </div>
+
+        <div class="format-section">
+            <label for="outputFormat">Convert to</label>
+            <select id="outputFormat">
+                <option value="JPG">JPG</option>
+                <option value="PNG">PNG</option>
+                <option value="WEBP">WEBP</option>
+                <option value="PDF">PDF</option>
+            </select>
+        </div>
+
+        <button type="button" id="convertButton" class="convert-button">
+            Convert File
+        </button>
+
+        <p id="statusMessage" class="status-message" role="status"></p>
+
+        <section id="resultSection" class="result-section" hidden>
+            <h2>Conversion successful!</h2>
+
+            <div id="previewContainer" hidden>
+                <h3>Converted File Preview</h3>
+                <img id="resultPreview" alt="Converted image preview">
+            </div>
+
+            <p id="noPreviewMessage" hidden>
+                Preview is not available for this file type.
+            </p>
+
+            <a id="downloadButton" class="download-button" href="#">
+                Download Converted File
+            </a>
+        </section>
+    </main>
+</body>
+</html>

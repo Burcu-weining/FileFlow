@@ -1,0 +1,42 @@
+
+# Python virtual environments
+.venv/
+venv/
+env/
+
+# Python cache
+__pycache__/
+*.pyc
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Secret and environment files
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# macOS
+.DS_Store
+
+# PyInstaller output
+build/
+dist/
+*.spec
+
+# FileFlow installers
+dmg-contents/
+*.dmg
+
+# Temporary conversion files
+.fileflow-*
+*.tmp
+
+# IDE configuration
+.vscode/
+.idea/
+
+# Local logs
+*.log
