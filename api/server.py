@@ -44,15 +44,14 @@ app.mount(
 )
 
 
+from fastapi.responses import RedirectResponse
+
+
 @app.get("/")
 def home():
-    """Return API information."""
+    """Redirect visitors to the FileFlow website."""
+    return RedirectResponse(url="/web/")
 
-    return {
-        "message": "Welcome to FileFlow API!",
-        "max_upload_mb": 10,
-        "max_output_mb": 50
-    }
     
 @app.get("/health")
 def health_check():
