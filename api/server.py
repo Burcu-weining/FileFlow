@@ -1,3 +1,6 @@
+import os
+import subprocess
+import sys
 from fastapi import Request
 from fastapi.responses import JSONResponse
 from slowapi import Limiter
@@ -83,6 +86,86 @@ def health_check():
         "service": "FileFlow"
     }
 
+
+CONVERSION_TIMEOUT_SECONDS = 25
+
+
+def run_conversion(input_path, output_format):
+    """Run conversion with a timeout when isolation is enabled."""
+
+    # Preserve the existing in-process behavior for local tests.
+    # Render will explicitly enable subprocess isolation.
+    use_worker = os.getenv(
+        "FILEFLOW_USE_SUBPROCESS", "0"
+    ) == "1"
+
+    if not use_worker:
+        if input_path.suffix.lower() == ".pdf":
+            return convert_pdf(input_path, output_format)
+
+        return convert_image(input_path, output_format)
+
+    command = [
+        sys.executable,
+        "-m",
+        "api.conversion_worker",
+        str(input_path),
+        output_format
+    ]
+
+    try:
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            timeout=CONVERSION_TIMEOUT_SECONDS,
+            check=False
+        )
+
+    except subprocess.TimeoutExpired as error:
+        raise HTTPException(
+            status_code=504,
+            detail=(
+                "Conversion took too long. "
+                "Maximum processing time is 25 seconds."
+            )
+        ) from error
+
+    if result.returncode == 2:
+        message = result.stderr.strip()
+
+        if message.startswith("VALIDATION: "):
+            message = message.removeprefix("VALIDATION: ")
+
+        raise HTTPException(
+            status_code=400,
+            detail=message[:500]
+        )
+
+    if result.returncode != 0:
+        raise HTTPException(
+            status_code=500,
+            detail="Conversion failed unexpectedly."
+        )
+
+    output_name = result.stdout.strip()
+
+    if not output_name:
+        raise HTTPException(
+            status_code=500,
+            detail="Conversion produced no output."
+        )
+
+    output_path = Path(output_name).resolve()
+
+    # Only accept a converted file inside the upload folder
+    if output_path.parent != input_path.parent.resolve():
+        raise HTTPException(
+            status_code=500,
+            detail="Invalid conversion output location."
+        )
+
+    return output_path
 
 @app.post("/convert")
 @limiter.limit("20/minute")
@@ -171,16 +254,10 @@ def convert_file(
                 destination.write(chunk)
 
         # Convert using the appropriate engine
-        if extension == ".pdf":
-            output_path = convert_pdf(
-                input_path,
-                output_format
-            )
-        else:
-            output_path = convert_image(
-                input_path,
-                output_format
-            )
+        output_path = run_conversion(
+            input_path,
+            output_format
+        )
 
         output_path = Path(output_path)
 
