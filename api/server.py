@@ -1,3 +1,8 @@
+from fastapi import Request
+from fastapi.responses import JSONResponse
+from slowapi import Limiter
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 from fastapi.responses import RedirectResponse
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -14,6 +19,23 @@ from app.pdf_converter import convert_pdf
 
 # Create the FileFlow API
 app = FastAPI(title="FileFlow API")
+# Rate limiting for conversion requests
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+
+
+@app.exception_handler(RateLimitExceeded)
+async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
+    return JSONResponse(
+        status_code=429,
+        content={
+            "detail": (
+                "Too many conversions. "
+                "Please try again in one minute."
+            )
+        },
+        headers={"Retry-After": "60"}
+    )
 
 
 # Resource limits
@@ -63,7 +85,9 @@ def health_check():
 
 
 @app.post("/convert")
+@limiter.limit("20/minute")
 def convert_file(
+    request: Request,
     file: UploadFile = File(...),
     output_format: str = Form(...)
 ):
