@@ -46,7 +46,6 @@ app.mount(
 
 from fastapi.responses import RedirectResponse
 
-
 @app.get("/")
 def home():
     """Redirect visitors to the FileFlow website."""
