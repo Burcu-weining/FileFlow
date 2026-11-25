@@ -1,5 +1,5 @@
 
-name: Build FileFlow for Windows
+name: Build and Test FileFlow for Windows
 
 on:
   workflow_dispatch:
@@ -37,12 +37,65 @@ jobs:
       - name: Build Windows application
         run: |
           python -m PyInstaller --noconfirm --clean --onedir --console --name FileFlow --paths . --add-data "assets;assets" launcher.py
+
       - name: Check executable exists
         shell: pwsh
         run: |
           if (!(Test-Path "dist/FileFlow/FileFlow.exe")) {
-            throw "FileFlow.exe was not created"
+            throw "FileFlow.exe was not created."
           }
+
+      - name: Test packaged Windows application
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          $exe = (Resolve-Path "dist/FileFlow/FileFlow.exe").Path
+          $stdout = Join-Path $env:RUNNER_TEMP "fileflow-stdout.txt"
+          $stderr = Join-Path $env:RUNNER_TEMP "fileflow-stderr.txt"
+
+          $process = Start-Process `
+            -FilePath $exe `
+            -ArgumentList "--smoke-test" `
+            -PassThru `
+            -RedirectStandardOutput $stdout `
+            -RedirectStandardError $stderr
+
+          if (-not $process.WaitForExit(30000)) {
+            Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+            throw "FileFlow did not finish the smoke test within 30 seconds."
+          }
+
+          $process.Refresh()
+
+          Write-Host "Standard output:"
+          Get-Content $stdout -ErrorAction SilentlyContinue
+
+          Write-Host "Standard errors:"
+          Get-Content $stderr -ErrorAction SilentlyContinue
+
+          if ($process.ExitCode -ne 0) {
+            throw "FileFlow startup test failed with exit code $($process.ExitCode)."
+          }
+
+          $output = Get-Content $stdout -Raw
+
+          if ($output -notmatch "SMOKE TEST PASSED") {
+            throw "FileFlow did not report successful GUI initialization."
+          }
+
+          Write-Host "Windows startup smoke test PASSED."
+
+      - name: Upload smoke test logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: FileFlow-Smoke-Test-Logs
+          path: |
+            ${{ runner.temp }}/fileflow-stdout.txt
+            ${{ runner.temp }}/fileflow-stderr.txt
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Upload Windows application
         uses: actions/upload-artifact@v4
