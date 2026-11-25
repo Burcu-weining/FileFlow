@@ -12,10 +12,10 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      - name: Download FileFlow source code
+      - name: Download source code
         uses: actions/checkout@v4
 
-      - name: Set up Python 3.12
+      - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -34,108 +34,95 @@ jobs:
           python -m py_compile app/converter.py
           python -m py_compile app/pdf_converter.py
 
-      - name: Build Windows application
+      - name: Build windowed Windows application
         run: |
-          python -m PyInstaller --noconfirm --clean --onedir --console --name FileFlow --paths . --add-data "assets;assets" launcher.py
+          python -m PyInstaller --noconfirm --clean --onedir --windowed --name FileFlow --icon "assets/FileFlow.ico" --paths . --add-data "assets;assets" launcher.py
 
-      - name: Check executable exists
+      - name: Check executable
         shell: pwsh
         run: |
           if (!(Test-Path "dist/FileFlow/FileFlow.exe")) {
             throw "FileFlow.exe was not created."
           }
 
-      - name: Test packaged Windows application
+      - name: Test packaged Windows GUI
         shell: pwsh
         env:
           QT_QPA_PLATFORM: offscreen
         run: |
           $exe = (Resolve-Path "dist/FileFlow/FileFlow.exe").Path
-          $stdout = Join-Path $env:RUNNER_TEMP "fileflow-stdout.txt"
-          $stderr = Join-Path $env:RUNNER_TEMP "fileflow-stderr.txt"
+          $report = Join-Path $env:RUNNER_TEMP "gui-smoke.txt"
+
+          $env:FILEFLOW_TEST_REPORT = $report
 
           $process = Start-Process `
             -FilePath $exe `
             -ArgumentList "--smoke-test" `
-            -PassThru `
-            -RedirectStandardOutput $stdout `
-            -RedirectStandardError $stderr
+            -PassThru
 
           if (-not $process.WaitForExit(30000)) {
-            Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
-            throw "FileFlow did not finish the smoke test within 30 seconds."
+            Stop-Process -Id $process.Id -Force
+            throw "GUI smoke test timed out."
           }
 
           $process.Refresh()
 
-          Write-Host "Standard output:"
-          Get-Content $stdout -ErrorAction SilentlyContinue
-
-          Write-Host "Standard errors:"
-          Get-Content $stderr -ErrorAction SilentlyContinue
+          if (Test-Path $report) {
+            Get-Content $report
+          } else {
+            throw "GUI test report was not created."
+          }
 
           if ($process.ExitCode -ne 0) {
-            throw "FileFlow startup test failed with exit code $($process.ExitCode)."
+            throw "GUI smoke test failed."
           }
 
-          $output = Get-Content $stdout -Raw
-
-          if ($output -notmatch "SMOKE TEST PASSED") {
-            throw "FileFlow did not report successful GUI initialization."
+          if ((Get-Content $report -Raw) -notmatch "SMOKE TEST PASSED") {
+            throw "GUI startup was not successful."
           }
 
-          Write-Host "Windows startup smoke test PASSED."
-
-
-      
-      - name: Test real conversions in Windows executable
+      - name: Test packaged Windows conversions
         shell: pwsh
         run: |
           $exe = (Resolve-Path "dist/FileFlow/FileFlow.exe").Path
-          $stdout = Join-Path $env:RUNNER_TEMP "conversion-stdout.txt"
-          $stderr = Join-Path $env:RUNNER_TEMP "conversion-stderr.txt"
+          $report = Join-Path $env:RUNNER_TEMP "conversion-smoke.txt"
+
+          $env:FILEFLOW_TEST_REPORT = $report
 
           $process = Start-Process `
             -FilePath $exe `
             -ArgumentList "--conversion-smoke-test" `
-            -PassThru `
-            -RedirectStandardOutput $stdout `
-            -RedirectStandardError $stderr
+            -PassThru
 
           if (-not $process.WaitForExit(60000)) {
-            Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
-            throw "Conversion tests exceeded 60 seconds."
+            Stop-Process -Id $process.Id -Force
+            throw "Conversion smoke test timed out."
           }
 
           $process.Refresh()
 
-          Write-Host "Conversion output:"
-          Get-Content $stdout -ErrorAction SilentlyContinue
-
-          Write-Host "Conversion errors:"
-          Get-Content $stderr -ErrorAction SilentlyContinue
+          if (Test-Path $report) {
+            Get-Content $report
+          } else {
+            throw "Conversion test report was not created."
+          }
 
           if ($process.ExitCode -ne 0) {
-            throw "Conversion test failed with exit code $($process.ExitCode)."
+            throw "Conversion test failed."
           }
 
-          $output = Get-Content $stdout -Raw
-
-          if ($output -notmatch "ALL WINDOWS CONVERSION TESTS PASSED") {
-            throw "Not all conversion tests passed."
+          if ((Get-Content $report -Raw) -notmatch "ALL WINDOWS CONVERSION TESTS PASSED") {
+            throw "Windows conversion checks failed."
           }
 
-          Write-Host "Windows conversion smoke test PASSED."
-
-
-      - name: Upload smoke test logs
+      - name: Upload test reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: FileFlow-Smoke-Test-Logs
+          name: FileFlow-Test-Reports
           path: |
-            ${{ runner.temp }}/fileflow-stdout.txt
-            ${{ runner.temp }}/fileflow-stderr.txt
+            ${{ runner.temp }}/gui-smoke.txt
+            ${{ runner.temp }}/conversion-smoke.txt
           if-no-files-found: ignore
           retention-days: 7
 

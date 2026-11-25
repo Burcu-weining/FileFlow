@@ -1,5 +1,8 @@
 
+import os
 import sys
+import traceback
+from io import BytesIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from zipfile import ZipFile
@@ -11,14 +14,32 @@ from app.interface import FileFlowApp
 from app.styles import APP_STYLE
 
 
+def save_test_report(message):
+    """Save automated test output for GitHub Actions."""
+
+    report_path = os.environ.get("FILEFLOW_TEST_REPORT")
+
+    if report_path:
+        Path(report_path).write_text(
+            message,
+            encoding="utf-8"
+        )
+
+    # Normal console output is optional in windowed apps
+    if sys.stdout is not None:
+        print(message, flush=True)
+
+
 def test_conversions():
-    """Test conversion engines inside the packaged application."""
+    """Test conversion engines inside the packaged app."""
 
     import pymupdf
     from PIL import Image
 
     from app.converter import convert_image
     from app.pdf_converter import convert_pdf
+
+    results = []
 
     with TemporaryDirectory() as temp_dir:
         folder = Path(temp_dir)
@@ -36,7 +57,7 @@ def test_conversions():
             assert result.format == "PNG"
             assert result.size == (100, 100)
 
-        print("PASS: JPG to PNG", flush=True)
+        results.append("PASS: JPG to PNG")
 
         # Test 2: PNG -> PDF
         source_png = folder / "source_image.png"
@@ -51,7 +72,7 @@ def test_conversions():
             assert document.page_count == 1
             assert document.is_pdf
 
-        print("PASS: PNG to PDF", flush=True)
+        results.append("PASS: PNG to PDF")
 
         # Test 3: Single-page PDF -> JPG
         single_pdf = folder / "single_page.pdf"
@@ -67,14 +88,17 @@ def test_conversions():
             assert result.width > 0
             assert result.height > 0
 
-        print("PASS: Single-page PDF to JPG", flush=True)
+        results.append("PASS: Single-page PDF to JPG")
 
         # Test 4: Multi-page PDF -> ZIP
         multi_pdf = folder / "multi_page.pdf"
 
         with pymupdf.open() as document:
             for _ in range(3):
-                document.new_page(width=300, height=300)
+                document.new_page(
+                    width=300,
+                    height=300
+                )
 
             document.save(multi_pdf)
 
@@ -91,68 +115,85 @@ def test_conversions():
             for filename in filenames:
                 assert filename.endswith(".png")
 
-                from io import BytesIO
-
                 with Image.open(
                     BytesIO(archive.read(filename))
                 ) as result:
                     assert result.format == "PNG"
                     result.verify()
 
-        print("PASS: Multi-page PDF to ZIP", flush=True)
+        results.append("PASS: Multi-page PDF to ZIP")
 
-    print(
-        "ALL WINDOWS CONVERSION TESTS PASSED",
-        flush=True
-    )
+    results.append("ALL WINDOWS CONVERSION TESTS PASSED")
+    save_test_report("\n".join(results))
 
 
 def main():
     """Start FileFlow or run automated checks."""
 
-    # Run real file conversion tests without opening the GUI
+    # Conversion test mode
     if "--conversion-smoke-test" in sys.argv:
         try:
             test_conversions()
             return 0
 
         except Exception:
-            import traceback
-            traceback.print_exc()
+            save_test_report(
+                "CONVERSION TEST FAILED\n"
+                + traceback.format_exc()
+            )
             return 1
 
-    # Existing GUI smoke-test mode
+    # GUI startup test mode
     smoke_test = "--smoke-test" in sys.argv
 
-    app = QApplication(sys.argv)
-    app.setStyleSheet(APP_STYLE)
+    try:
+        app = QApplication(sys.argv)
+        app.setStyleSheet(APP_STYLE)
 
-    window = FileFlowApp()
+        window = FileFlowApp()
 
-    if not smoke_test and len(sys.argv) > 1:
-        window.set_selected_files(sys.argv[1:])
+        if not smoke_test and len(sys.argv) > 1:
+            window.set_selected_files(sys.argv[1:])
 
-    window.show()
+        window.show()
 
-    if smoke_test:
+        if smoke_test:
 
-        def check_startup():
-            if window.isVisible():
-                print(
-                    "SMOKE TEST PASSED: FileFlow window initialized.",
-                    flush=True
-                )
-                app.exit(0)
-            else:
-                print(
-                    "SMOKE TEST FAILED: Window is not visible.",
-                    flush=True
-                )
-                app.exit(1)
+            def check_startup():
+                try:
+                    if window.isVisible():
+                        save_test_report(
+                            "SMOKE TEST PASSED: "
+                            "FileFlow window initialized."
+                        )
+                        app.exit(0)
+                    else:
+                        save_test_report(
+                            "SMOKE TEST FAILED: "
+                            "Window is not visible."
+                        )
+                        app.exit(1)
 
-        QTimer.singleShot(500, check_startup)
+                except Exception:
+                    save_test_report(
+                        "SMOKE TEST FAILED\n"
+                        + traceback.format_exc()
+                    )
+                    app.exit(1)
 
-    return app.exec()
+            QTimer.singleShot(500, check_startup)
+
+        return app.exec()
+
+    except Exception:
+        if smoke_test:
+            save_test_report(
+                "SMOKE TEST FAILED\n"
+                + traceback.format_exc()
+            )
+            return 1
+
+        raise
 
 
 if __name__ == "__main__":
