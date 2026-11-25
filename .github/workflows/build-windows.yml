@@ -86,6 +86,48 @@ jobs:
 
           Write-Host "Windows startup smoke test PASSED."
 
+
+      
+      - name: Test real conversions in Windows executable
+        shell: pwsh
+        run: |
+          $exe = (Resolve-Path "dist/FileFlow/FileFlow.exe").Path
+          $stdout = Join-Path $env:RUNNER_TEMP "conversion-stdout.txt"
+          $stderr = Join-Path $env:RUNNER_TEMP "conversion-stderr.txt"
+
+          $process = Start-Process `
+            -FilePath $exe `
+            -ArgumentList "--conversion-smoke-test" `
+            -PassThru `
+            -RedirectStandardOutput $stdout `
+            -RedirectStandardError $stderr
+
+          if (-not $process.WaitForExit(60000)) {
+            Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+            throw "Conversion tests exceeded 60 seconds."
+          }
+
+          $process.Refresh()
+
+          Write-Host "Conversion output:"
+          Get-Content $stdout -ErrorAction SilentlyContinue
+
+          Write-Host "Conversion errors:"
+          Get-Content $stderr -ErrorAction SilentlyContinue
+
+          if ($process.ExitCode -ne 0) {
+            throw "Conversion test failed with exit code $($process.ExitCode)."
+          }
+
+          $output = Get-Content $stdout -Raw
+
+          if ($output -notmatch "ALL WINDOWS CONVERSION TESTS PASSED") {
+            throw "Not all conversion tests passed."
+          }
+
+          Write-Host "Windows conversion smoke test PASSED."
+
+
       - name: Upload smoke test logs
         if: always()
         uses: actions/upload-artifact@v4
