@@ -36,8 +36,7 @@ jobs:
 
       - name: Build Windows application
         run: |
-          python -m PyInstaller --noconfirm --clean --onedir --windowed --name FileFlow --paths . --add-data "assets;assets" launcher.py
-
+          python -m PyInstaller --noconfirm --clean --onedir --console --name FileFlow --paths . --add-data "assets;assets" launcher.py
       - name: Check executable exists
         shell: pwsh
         run: |
